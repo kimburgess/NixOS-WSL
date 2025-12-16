@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 
 let
   cfg = config.wsl.ssh-agent;
@@ -6,6 +11,24 @@ in
 {
   options.wsl.ssh-agent = {
     enable = lib.mkEnableOption "ssh-agent passthrough to Windows";
+
+    package = lib.mkPackageOption pkgs "wsl2-ssh-agent" { };
+
+    users = lib.mkOption {
+      type =
+        let
+          inherit (lib.types) either enum listOf;
+          userNames = lib.attrNames config.users.users;
+        in
+        either (enum [
+          "!@system"
+          "@system"
+        ]) (listOf (enum userNames));
+      default = "!@system";
+      description = ''
+        Users to activate the service for. Defaults to all non-system users.
+      '';
+    };
   };
 
   config = lib.mkIf (config.wsl.enable && cfg.enable) {
@@ -14,10 +37,10 @@ in
       after = [ "network.target" ];
       wantedBy = [ "default.target" ];
       unitConfig = {
-        ConditionUser = "!root";
+        ConditionUser = lib.join "|" (lib.toList cfg.users);
       };
       serviceConfig = {
-        ExecStart = "${pkgs.wsl2-ssh-agent}/bin/wsl2-ssh-agent --verbose --foreground --socket=%t/wsl2-ssh-agent.sock";
+        ExecStart = "${cfg.package}/bin/wsl2-ssh-agent --verbose --foreground --socket=%t/wsl2-ssh-agent.sock";
         Restart = "on-failure";
       };
     };
